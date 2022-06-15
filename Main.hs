@@ -168,6 +168,11 @@ quitCmd st r s = if bufferModified st then return . Left $ ErrorModifiedBuffer e
 forceQuitCmd :: HedCmd
 forceQuitCmd st _ _ = exitSuccess >> return (Right st)
 
+enumerateCmd :: HedCmd
+enumerateCmd st NoRange _ = putStrLn ((show . line $ st) ++ "\t" ++ (getBufferLine (buffer st) (line st))) >> return (Right st)
+enumerateCmd st r _ = mapM_ putStrLn (zipWith (\x -> \y -> show x ++ "\t" ++ y) [getFirstLine r .. getLastLine r] (rangeSlice r (buffer st))) >> 
+                      return (Right $ st {line = getLastLine r})
+
 printCmd :: HedCmd
 printCmd st NoRange _ = putStrLn (getBufferLine (buffer st) (line st)) >> return (Right st)
 printCmd st r _ = mapM_ putStrLn (rangeSlice r (buffer st)) >> return (Right $ st {line = getLastLine r})
@@ -234,6 +239,7 @@ getCmd 'w' = writeCmd
 getCmd 'q' = quitCmd
 getCmd 'Q' = forceQuitCmd
 getCmd 'p' = printCmd
+getCmd 'n' = enumerateCmd
 getCmd 'P' = promptCmd
 getCmd 'h' = showErrorCmd
 getCmd 'H' = toggleErrorCmd
