@@ -168,9 +168,17 @@ quitCmd st r s = if bufferModified st then return . Left $ ErrorModifiedBuffer e
 forceQuitCmd :: HedCmd
 forceQuitCmd st _ _ = exitSuccess >> return (Right st)
 
+replaceStr :: String -> Char -> String -> String
+replaceStr _ _ "" = ""
+replaceStr r c (x : xs) = if x == c then r ++ (replaceStr r c xs) else (x : replaceStr r c xs)
+
+listCmd :: HedCmd
+listCmd st NoRange _ = putStrLn (getBufferLine (buffer st) (line st)) >> return (Right st)
+listCmd st r _ = mapM_ (putStrLn . (++ "$") . replaceStr "\\$" '$') (rangeSlice r (buffer st)) >> return (Right $ st {line = getLastLine r})
+
 enumerateCmd :: HedCmd
 enumerateCmd st NoRange _ = putStrLn ((show . line $ st) ++ "\t" ++ (getBufferLine (buffer st) (line st))) >> return (Right st)
-enumerateCmd st r _ = mapM_ putStrLn (zipWith (\x -> \y -> show x ++ "\t" ++ y) [getFirstLine r .. getLastLine r] (rangeSlice r (buffer st))) >> 
+enumerateCmd st r _ = mapM_ putStrLn (zipWith (\x y -> show x ++ "\t" ++ y) [getFirstLine r .. getLastLine r] (rangeSlice r (buffer st))) >> 
                       return (Right $ st {line = getLastLine r})
 
 printCmd :: HedCmd
@@ -239,6 +247,7 @@ getCmd 'w' = writeCmd
 getCmd 'q' = quitCmd
 getCmd 'Q' = forceQuitCmd
 getCmd 'p' = printCmd
+getCmd 'l' = listCmd
 getCmd 'n' = enumerateCmd
 getCmd 'P' = promptCmd
 getCmd 'h' = showErrorCmd
