@@ -25,6 +25,8 @@ hedDef = HED { inFile = def &= args &= typ "FILE" }
 
 data Buffer = Buffer { blines :: [String] } deriving (Show)
 
+data Variable = Variable { varKey :: Char, varLine :: Int } deriving (Show)
+
 data HedState = HedState 
     { buffer :: Buffer
     , bufferModified :: Bool
@@ -34,7 +36,8 @@ data HedState = HedState
     , file :: String
     , printErrors :: Bool
     , lastError :: Maybe HedError 
-    , prevState :: Maybe HedState } deriving (Show)
+    , prevState :: Maybe HedState
+    , variables :: [Variable] } deriving (Show)
 
 data HedError = ErrorBadCommand | ErrorUnknown | ErrorInvalidAddress | ErrorModifiedBuffer deriving (Show)
 
@@ -47,10 +50,6 @@ data Address = AssumedAddress {addr :: Int} -- Initial value assumed
              | LiteralAddress {addr :: Int} -- Initial value explicitly defined
              | NoAddress -- No Address read
              deriving (Show)
-
-if' :: Bool -> a -> a -> a
-if' True  a _ = a
-if' False _ b = b
 
 getFileSize :: FilePath -> IO (Maybe Integer)
 getFileSize path = handle handler
@@ -78,7 +77,7 @@ main = do
     hSetBuffering stdout NoBuffering
     args <- cmdArgs hedDef
     buf <- readFileToBuffer $ inFile args
-    let s = HedState buf False 1 "*" False (inFile args) False Nothing Nothing
+    let s = HedState buf False 1 "*" False (inFile args) False Nothing Nothing []
     printFileSize s
     mainLoop s
 
@@ -201,7 +200,7 @@ appendCmd :: HedCmd
 appendCmd st r _ = do
     let p = asSingleRange st r
     l <- getInputLines
-    let modified = if' (l == [""]) id modifyBuffer
+    let modified = if l == [""] then id else modifyBuffer
     let oldLines = blines $ buffer st
     let st' = modified $ st {buffer = Buffer (take p oldLines ++ l ++ drop p oldLines)}
     return (Right st')
@@ -220,7 +219,7 @@ insertCmd :: HedCmd
 insertCmd st r _ = do
     let p = asSingleRange st r
     l <- getInputLines
-    let modified = if' (l == [""]) id modifyBuffer
+    let modified = if (l == [""]) then id else modifyBuffer
     let oldLines = blines $ buffer st
     let st' = modified $ st {buffer = Buffer (take (p-1) oldLines ++ l ++ drop (p-1) oldLines)}
     return (Right st')
@@ -230,6 +229,19 @@ writeCmd st _ _ = do
     writeFile (file st) (intercalate "\n" . blines . buffer $ st)
     printFileSize st
     return . Right $ st {bufferModified = False}
+
+writeAppendCmd :: HedCmd
+writeAppendCmd st _ _ = do
+    appendFile (file st) (intercalate "\n" . blines . buffer $ st)
+    printFileSize st
+    return . Right $ st {bufferModified = False}
+
+deleteCmd :: HedCmd
+deleteCmd st NoRange _ = deleteCmd st (SingleRange . LiteralAddress . line $ st) ""
+deleteCmd st r _ = let f = getFirstLine r - 1
+                       l = getLastLine r
+                       lines = blines . buffer $ st
+                   in return . Right $ st {buffer = Buffer $ ((take f lines) ++ (drop l lines))}
 
 undoCmd :: HedCmd
 undoCmd HedState{prevState = Nothing} _ _ = return . Left $ ErrorUnknown
@@ -243,7 +255,9 @@ getCmd 'a' = undoClosure appendCmd
 getCmd 'i' = undoClosure insertCmd
 getCmd 'u' = undoClosure undoCmd
 getCmd 'j' = undoClosure joinCmd
+getCmd 'd' = undoClosure deleteCmd
 getCmd 'w' = writeCmd
+getCmd 'W' = writeAppendCmd
 getCmd 'q' = quitCmd
 getCmd 'Q' = forceQuitCmd
 getCmd 'p' = printCmd
